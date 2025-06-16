@@ -6,6 +6,44 @@ Here we provide instructions for two use cases: (1) Retraining our model on our 
 
 If you encounter any bugs or issues, feel free to contact us.
 
+## 🚀 Latest Updates
+
+**[June 2025] Data Processing Tutorial Update**: We have streamlined our data processing pipeline with a comprehensive step-by-step tutorial. Users can now easily generate all required data using our new Jupyter notebook instead of following the previous complex workflow.
+
+---
+
+## Data Processing Tutorial Update
+
+We have updated our data processing pipeline with a comprehensive tutorial! Instead of following the previous complex and redundant data generation process, you can now easily prepare all required data step-by-step using our new Jupyter notebook tutorial.
+
+### New Streamlined Data Processing
+
+**📍 Location**: [`./DataProcess/Process_data.ipynb`](DataProcess/Process_data.ipynb)
+
+This notebook provides a complete walkthrough from raw data to model-ready datasets using the latest benchmark data as examples.
+
+### Sample Data Provided
+
+We have included sample benchmark datasets in [`./DataProcess/data_dpfunc/`](DataProcess/data_dpfunc/) to help you get started quickly. 
+
+**Note**: PDB structure files are not included due to size constraints. Please download and place the required PDB files in the corresponding folders as indicated in the tutorial.
+
+### Getting Started
+
+1. **Follow the Tutorial**: Open [`./DataProcess/Process_data.ipynb`](DataProcess/Process_data.ipynb) and execute cells step-by-step
+2. **Prepare PDB Files**: Download required PDB structure files and place them in the specified directories
+3. **Run Processing**: The notebook will guide you through generating all necessary data files for training and prediction
+
+### What You'll Generate
+
+The tutorial will help you create:
+- Protein ID lists and GO annotations
+- PDB graph structures with features
+- InterPro domain annotations
+- Multi-label binarizer files
+
+This new approach significantly simplifies the data preparation process and ensures reproducibility across different environments. After this step, you can train or predict DPFunc!
+
 ## Train DPFunc
 
 ### Key Environment
@@ -18,6 +56,8 @@ DGL: 1.1.0
 You can download our models from `./data/download_link.txt` and get our trained model.
 
 ### Data Construction
+You can following our newest data process mentioned above and ingore this part now!
+
 You should prepare your configure file as requirement (see `./configure/[mf/cc/bp].yaml` as an example), following items must be clarified:
 ```
 name: mf   # The ontology you want to choose: mf/bp/cc. Make sure it matches the file name of configuration file (mf.yaml/bp.yaml/cc.yaml).
