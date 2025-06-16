@@ -26,6 +26,12 @@ This notebook provides a complete walkthrough from raw data to model-ready datas
 
 We have included sample benchmark datasets in [`./DataProcess/data_dpfunc/`](DataProcess/data_dpfunc/) to help you get started quickly. 
 
+**Citation Requirements**: If you use these benchmark datasets in your research, please cite the following publications:
+
+1. Wang W, Shuai Y, Zeng M, et al. DPFunc: accurately predicting protein function via deep learning with domain-guided structure information[J]. Nature Communications, 2025, 16(1): 70.
+
+2. DPGOK: A deep learning-based method for protein function prediction by fusing GO knowledge with protein features. (Submitted, under review). GitHub: https://github.com/CSUBioGroup/DuGPro
+
 **Note**: PDB structure files are not included due to size constraints. Please download and place the required PDB files in the corresponding folders as indicated in the tutorial.
 
 ### Getting Started
