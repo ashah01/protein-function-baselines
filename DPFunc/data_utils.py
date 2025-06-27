@@ -32,7 +32,7 @@ def get_pdb_data(pid_list_file, pdb_graph_file, pid_go_file, train=0):
         with open(pdb_graph_file, 'rb') as fr:
             pdb_graphs = pkl.load(fr)
 
-    return pid_list, pdb_graphs, get_go_list(pid_go_file, pid_list)
+    return pid_list, pdb_graphs
 
 def get_mlb(mlb_path: Path, labels=None, **kwargs) -> MultiLabelBinarizer:
     mlb = MultiLabelBinarizer(sparse_output=False, **kwargs)
