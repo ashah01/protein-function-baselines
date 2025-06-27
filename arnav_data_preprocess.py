@@ -189,7 +189,7 @@ pdb_graphs, unseen_proteins = process_proteins_and_create_graphs(df_subset)
 # # Save graphs as dictionary
 print("Saving graphs as dictionary...")
 os.makedirs('./processed_file/graph_features', exist_ok=True)
-save_pkl('./processed_file/graph_features/protein_graphs_dict.pkl', pdb_graphs)
+save_pkl('./processed_file/graph_features/protein_graphs_dict_train.pkl', pdb_graphs)
 
 # Save other data
 save_pkl('./processed_file/unseen_proteins.pkl', unseen_proteins)
