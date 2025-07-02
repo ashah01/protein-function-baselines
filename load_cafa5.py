@@ -224,9 +224,9 @@ if __name__ == "__main__":
 
     # ================================ Download Structures ================================
 
-    # extracted_structure_dir = download_structure_files(
-    #     cache_dir=cache_dir,
-    # )
+    extracted_structure_dir = download_structure_files(
+        cache_dir=cache_dir,
+    )
     # For running without downloading structures, you can uncomment the line below
     # extracted_structure_dir = os.path.join(cache_dir, "extracted")
 

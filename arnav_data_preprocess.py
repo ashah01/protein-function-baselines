@@ -108,7 +108,7 @@ def process_proteins_and_create_graphs(
     print(f"Processing {len(df_subset)} proteins...")
 
     # Load the ESM embeddings once to avoid re-loading inside the loop.
-    esm_features = read_pkl("./processed_file/esm_emds/esm_all.pkl")
+    protein_map = read_pkl("./large_storage/goodarzilab/ashah/esm_train_protein_map.pkl")
 
     for row in tqdm(df_subset, desc="Proteins"):
         uni_id, struct_entry = row["protein_id"], row["structure_path"]
@@ -154,19 +154,10 @@ def process_proteins_and_create_graphs(
         graph = dgl.graph((u_list, v_list), num_nodes=len(points))
         graph.edata["dis"] = dis_list
 
-        # Add node features
-        if uni_id not in esm_features:
-            print(f"Warning: ESM embedding not found for {uni_id}. Skipping protein.")
-            unseen_proteins.add(uni_id)
-            continue
+        esm_file_idx = protein_map[uni_id]
+        esm_features = read_pkl(f"/large_storage/goodarzilab/ashah/esm_emds_train/esm_part_{esm_file_idx}.pkl")
 
         node_features = esm_features[uni_id]
-        if node_features.shape[0] != graph.num_nodes():
-            print(
-                f"Warning: embedding / graph size mismatch for {uni_id} (emb {node_features.shape[0]} vs graph {graph.num_nodes()}). Skipping."
-            )
-            unseen_proteins.add(uni_id)
-            continue
 
         graph.ndata["x"] = torch.from_numpy(node_features)
 
