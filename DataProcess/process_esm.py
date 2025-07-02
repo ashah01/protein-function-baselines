@@ -5,7 +5,7 @@ import pickle as pkl
 import torch
 import esm
 from tqdm.auto import trange, tqdm
-from datasets import load_dataset
+from load_cafa5 import load_cafa5_dataset
 
 def read_pkl(file_path):
     with open(file_path,'rb') as fr:
@@ -18,23 +18,33 @@ def save_pkl(file_path, val):
 
 # Load HuggingFace dataset instead of pickle files
 print("Loading HuggingFace dataset...")
-df = load_dataset("wanglab/cafa5", "cafa5_reasoning", split="train").to_pandas()
+train_dataset, val_dataset, test_dataset = load_cafa5_dataset(
+    dataset="wanglab/cafa5",
+    dataset_name="cafa5_reasoning",
+    dataset_subset=None,
+    max_length=2048,
+    val_split_ratio=0.1,
+    seed=23,
+    return_as_chat_template=False,
+    cache_dir='/Users/arnavshah/Code/DPFunc/cafa5',
+    structure_dir='/Users/arnavshah/Code/DPFunc/cafa5/extracted' # '/Users/arnavshah/Code/DPFunc/cafa5/extracted'
+)
 
 # Extract protein IDs and sequences
-proteins = df['protein_id'].tolist()
-x_seqs = df['sequence'].tolist()
+proteins = train_dataset['protein_id']
+x_seqs = train_dataset['sequence']
 
 print(f"Processing {len(proteins)} proteins...")
 
 # Create output directory
-os.makedirs('./processed_file/esm_emds', exist_ok=True)
+os.makedirs('./processed_file/esm_emds_train', exist_ok=True)
 
 model, alphabet = esm.pretrained.esm2_t33_650M_UR50D()
 batch_converter = alphabet.get_batch_converter()
 model.eval()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-batch_size = 10
+batch_size = 8
 steps = len(x_seqs)//batch_size + (1 if len(x_seqs) % batch_size != 0 else 0)
 
 # Dictionary to store all embeddings

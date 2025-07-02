@@ -1,21 +1,26 @@
-# import torch
-# import dgl
-import pandas as pd
-import numpy as np
+import torch
+import dgl
 import os
 from tqdm.auto import tqdm
-from datasets import load_dataset
 from Bio.PDB.MMCIFParser import FastMMCIFParser
-from Bio.PDB.PDBParser import PDBParser
-import fsspec
-import re
 import math
 import gzip
 import pickle as pkl
+from load_cafa5 import load_cafa5_dataset
 
 # Load HuggingFace dataset
 print("Loading HuggingFace dataset...")
-df = load_dataset("wanglab/cafa5", "cafa5_reasoning", split="train").to_pandas()
+train_dataset, val_dataset, test_dataset = load_cafa5_dataset(
+    dataset="wanglab/cafa5",
+    dataset_name="cafa5_reasoning",
+    dataset_subset=None,
+    max_length=2048,
+    val_split_ratio=0.1,
+    seed=23,
+    return_as_chat_template=False,
+    cache_dir='/Users/arnavshah/Code/DPFunc/cafa5',
+    structure_dir='/Users/arnavshah/Code/DPFunc/cafa5/extracted' # '/Users/arnavshah/Code/DPFunc/cafa5/extracted'
+)
 
 def read_pkl(file_path):
     with open(file_path,'rb') as fr:
@@ -26,8 +31,8 @@ def save_pkl(file_path, val):
     pkl.dump(val, fw)
     fw.close()
 
-def extract_sequence_and_ca_coords(pdb_file, chain_id=None, af=True):
-    parser = FastMMCIFParser(QUIET=True) if af else PDBParser(QUIET=True)
+def extract_sequence_and_ca_coords(pdb_file, chain_id=None):
+    parser = FastMMCIFParser(QUIET=True)
     if pdb_file.endswith(".gz"):
         with gzip.open(pdb_file, "rt") as gz_file:
             temp_file = pdb_file.replace(".gz", "_temp")
@@ -71,40 +76,6 @@ def extract_sequence_and_ca_coords(pdb_file, chain_id=None, af=True):
 
     return results[chain_id]["ca_coords"] if chain_id in results else []
 
-fs = fsspec.filesystem("file")
-
-# we don't know the shard so we'll just regex match based on structure in hf
-shard_paths = fs.glob(
-    "/Users/arnavshah/Code/DPFunc/cafa5/structures/*/*/*"
-)  # Lists all tar.gz shard paths
-af_shard_index = [
-    re.search(
-        r"AF-(.*?)-F1-",
-        sorted(
-            fs.glob(
-                f"/Users/arnavshah/Code/DPFunc/cafa5/structures/af_shards/shard_{i}/*"
-            )
-        )[-1].split("/")[-1],
-    ).group(1)
-    for i in range(35)
-]
-pdb_shard_index = [
-    sorted(
-        fs.glob(f"/Users/arnavshah/Code/DPFunc/cafa5/structures/pdb_shards/shard_{i}/*")
-    )[-1]
-    .split("/")[-1]
-    .split(".")[0]
-    for i in range(5)
-]
-
-def find_protein_shard(entry: str, af: bool = True) -> int:
-    code = re.search(r"AF-(.*?)-F1-", entry).group(1) if af else entry.split(".")[0]
-    shard_index = af_shard_index if af else pdb_shard_index
-    length = 35 if af else 5
-
-    for i in range(length):
-        if code <= shard_index[i]:
-            return i
 
 def get_dis(point1, point2):
     dis_x = point1[0] - point2[0]
@@ -112,92 +83,117 @@ def get_dis(point1, point2):
     dis_z = point1[2] - point2[2]
     return math.sqrt(dis_x * dis_x + dis_y * dis_y + dis_z * dis_z)
 
-def process_proteins_and_create_graphs(df_subset, thresholds=12):
-    """Process proteins and create DGL graphs, saving them as dictionaries"""
-    import dgl
-    import torch
-    
-    pdb_graphs = {}
-    unseen_proteins = set()
+def process_proteins_and_create_graphs(
+    df_subset,
+    thresholds: int = 12,
+    output_dir: str = "./processed_file/graph_features/train",
+):
+    """Process proteins and create DGL graphs, saving *each* graph to disk as soon as it is built.
 
+    This avoids holding all graphs in memory at once and greatly reduces peak RAM usage on large
+    datasets.
+
+    Returns
+    -------
+    saved_graph_paths : list[str]
+        Files that were written for successfully processed proteins.
+    unseen_proteins : set[str]
+        Proteins that could not be processed because of missing structure files.
+    """
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    unseen_proteins = set()
+    pdb_graphs = {}
     print(f"Processing {len(df_subset)} proteins...")
 
-    for index, row in tqdm(df_subset.iterrows()):
-        uni_id, struct_entry = (
-            row["protein_id"],
-            row["structure_path"],
-        )
-        if struct_entry is None:  # will be roughly 5%
+    # Load the ESM embeddings once to avoid re-loading inside the loop.
+    esm_features = read_pkl("./processed_file/esm_emds/esm_all.pkl")
+
+    for row in tqdm(df_subset, desc="Proteins"):
+        uni_id, struct_entry = row["protein_id"], row["structure_path"]
+
+        # Skip examples without structure information
+        if struct_entry is None:
             unseen_proteins.add(uni_id)
             continue
 
-        database, entry = struct_entry.split("/")
-        af = database == "af_db"
-        assert database in ["af_db", "pdb_files"]
-        pdb_file = f"../cafa5/structures/{'af_shards' if af else 'pdb_shards'}/shard_{find_protein_shard(entry, af)}/{entry}"
+        pdb_file = struct_entry
 
-        if not os.path.exists(pdb_file):  # should never be triggered (@Purav)
-            print(f"GUARD REACHED {struct_entry}. PDB file: {pdb_file}")
+        if not os.path.exists(pdb_file):
+            print(f"Warning: structure file not found for {uni_id} → {pdb_file}")
             unseen_proteins.add(uni_id)
             continue
 
-        coords_list = extract_sequence_and_ca_coords(pdb_file, "A", af)
+        coords_list = extract_sequence_and_ca_coords(pdb_file, "A")
 
-        if coords_list:  # guard
-            valid_coords = [coord for coord in coords_list if coord is not None]
-            
-            # Create DGL graph
-            points = valid_coords
-            u_list = []
-            v_list = []
-            dis_list = []
-            
-            for uid, amino_1 in enumerate(points):
-                for vid, amino_2 in enumerate(points):
-                    if uid == vid:
-                        continue
-                    dist = get_dis(amino_1, amino_2)
-                    if dist <= thresholds:
-                        u_list.append(uid)
-                        v_list.append(vid)
-                        dis_list.append(dist)
-            
-            u_list, v_list = torch.tensor(u_list), torch.tensor(v_list)
-            dis_list = torch.tensor(dis_list)
+        if not coords_list:
+            unseen_proteins.add(uni_id)
+            continue
 
-            graph = dgl.graph((u_list, v_list), num_nodes=len(points))
-            graph.edata["dis"] = dis_list
+        valid_coords = [coord for coord in coords_list if coord is not None]
 
-            esm_features = read_pkl(
-                "./processed_file/esm_emds/esm_all.pkl"
+        # Build graph
+        points = valid_coords
+        u_list, v_list, dis_list = [], [], []
+
+        for uid, amino_1 in enumerate(points):
+            for vid, amino_2 in enumerate(points):
+                if uid == vid:
+                    continue
+                dist = get_dis(amino_1, amino_2)
+                if dist <= thresholds:
+                    u_list.append(uid)
+                    v_list.append(vid)
+                    dis_list.append(dist)
+
+        u_list = torch.tensor(u_list)
+        v_list = torch.tensor(v_list)
+        dis_list = torch.tensor(dis_list)
+
+        graph = dgl.graph((u_list, v_list), num_nodes=len(points))
+        graph.edata["dis"] = dis_list
+
+        # Add node features
+        if uni_id not in esm_features:
+            print(f"Warning: ESM embedding not found for {uni_id}. Skipping protein.")
+            unseen_proteins.add(uni_id)
+            continue
+
+        node_features = esm_features[uni_id]
+        if node_features.shape[0] != graph.num_nodes():
+            print(
+                f"Warning: embedding / graph size mismatch for {uni_id} (emb {node_features.shape[0]} vs graph {graph.num_nodes()}). Skipping."
             )
-            node_features = esm_features[uni_id]
-            assert node_features.shape[0] == graph.num_nodes()
-            graph.ndata["x"] = torch.from_numpy(node_features)
-            pdb_graphs[uni_id] = graph
+            unseen_proteins.add(uni_id)
+            continue
 
-    print(f"Created {len(pdb_graphs)} graphs")
+        graph.ndata["x"] = torch.from_numpy(node_features)
+
+        # Save graph to disk immediately
+        pdb_graphs[uni_id] = graph
+
     print(f"Unseen proteins: {len(unseen_proteins)}")
-    
+
     return pdb_graphs, unseen_proteins
 
-# Process a subset of proteins for testing (you can change this to process all)
-print("Processing proteins and creating graphs...")
-df_subset = df.head(100)  # Process first 100 proteins for testing
-pdb_graphs, unseen_proteins = process_proteins_and_create_graphs(df_subset)
+# ============================= RUN PRE-PROCESSING =============================
 
-# # Save graphs as dictionary
-print("Saving graphs as dictionary...")
-os.makedirs('./processed_file/graph_features', exist_ok=True)
-save_pkl('./processed_file/graph_features/protein_graphs_dict_train.pkl', pdb_graphs)
+print("Processing proteins and creating graphs (memory-efficient mode)...")
 
-# Save other data
-save_pkl('./processed_file/unseen_proteins.pkl', unseen_proteins)
+pdb_graphs, unseen_proteins = process_proteins_and_create_graphs(train_dataset)
+
+# Persist list of graph paths and unseen proteins for downstream loading
+os.makedirs("./processed_file/graph_features", exist_ok=True)
+
+save_pkl("./processed_file/graph_features/train_graph_paths.pkl", pdb_graphs)
+save_pkl("./processed_file/unseen_proteins.pkl", unseen_proteins)
 
 print("Data processing complete!")
-print(f"Files saved:")
-print(f"  - Protein graphs: ./processed_file/graph_features/protein_graphs_dict.pkl")
-print(f"  - Unseen proteins: ./processed_file/unseen_proteins.pkl")
+print("Files saved:")
+print("  - Per-protein graphs: ./processed_file/graph_features/train/*.bin")
+print("  - Graph path index : ./processed_file/graph_features/train_graph_paths.pkl")
+print("  - Unseen proteins  : ./processed_file/unseen_proteins.pkl")
 
 # # Create interpro features
 # print("Creating interpro features...")

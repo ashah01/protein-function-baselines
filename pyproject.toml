@@ -3,14 +3,13 @@ name = "dpfunc"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
     "biopython>=1.85",
     "datasets>=3.6.0",
     "fsspec>=2025.3.0",
     "ipykernel>=6.29.5",
     "ipython>=9.3.0",
-    "numpy>=2.3.1",
     "pandas>=2.3.0",
     "scipy>=1.16.0",
     "tqdm>=4.67.1",
